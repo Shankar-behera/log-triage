@@ -153,3 +153,58 @@ def test_file_endpoint_redacts_secret_like_filename(client):
     assert response.status_code == 200, response.text
     body = json.dumps(response.json())
     assert "filename-secret" not in body
+
+
+@pytest.mark.parametrize("analysis_type", ["quick", "full"])
+def test_text_endpoint_does_not_expose_llm_exception(client, monkeypatch, caplog, analysis_type):
+    secret = "synthetic-provider-secret-91827"
+
+    class FailingAnalyzer:
+        model = "test"
+
+        def quick_analysis(self, text):
+            raise demo.LLMUnavailable(f"provider failed password={secret}")
+
+        async def full_analysis(self, text):
+            raise demo.LLMUnavailable(f"provider failed password={secret}")
+
+    monkeypatch.setattr(demo, "get_analyzer", lambda: FailingAnalyzer())
+
+    with caplog.at_level("ERROR"):
+        response = client.post(
+            "/analyze/text",
+            json={"log_text": "ERROR test", "analysis_type": analysis_type},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Analysis service temporarily unavailable"
+    assert secret not in response.text
+    assert secret not in caplog.text
+
+
+@pytest.mark.parametrize("quick", [True, False])
+def test_file_endpoint_does_not_expose_llm_exception(client, monkeypatch, caplog, quick):
+    secret = "synthetic-provider-secret-73164"
+
+    class FailingAnalyzer:
+        model = "test"
+
+        def quick_analysis(self, text):
+            raise demo.LLMUnavailable(f"provider failed token={secret}")
+
+        async def full_analysis(self, text):
+            raise demo.LLMUnavailable(f"provider failed token={secret}")
+
+    monkeypatch.setattr(demo, "get_analyzer", lambda: FailingAnalyzer())
+
+    with caplog.at_level("ERROR"):
+        response = client.post(
+            "/analyze",
+            files={"file": ("failure.log", b"ERROR test", "text/plain")},
+            data={"quick": str(quick).lower()},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Analysis service temporarily unavailable"
+    assert secret not in response.text
+    assert secret not in caplog.text

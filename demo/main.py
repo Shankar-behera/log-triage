@@ -159,8 +159,12 @@ async def analyze_text(payload: LogAnalysisRequest):
             if is_quick
             else await analyzer.full_analysis(safe_text)
         )
-    except LLMUnavailable as e:
-        raise HTTPException(status_code=503, detail=f"LLM step failed: {e}")
+    except LLMUnavailable:
+        logger.error("LLM analysis step failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Analysis service temporarily unavailable",
+        ) from None
 
     analysis_id = str(uuid.uuid4())
     result["analysis_id"] = analysis_id
@@ -189,8 +193,12 @@ async def analyze_file(file: UploadFile = File(...), quick: bool = Form(False)):
             if quick
             else await analyzer.full_analysis(log_text)
         )
-    except LLMUnavailable as e:
-        raise HTTPException(status_code=503, detail=f"LLM step failed: {e}")
+    except LLMUnavailable:
+        logger.error("LLM analysis step failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Analysis service temporarily unavailable",
+        ) from None
 
     result["source_filename"] = sanitize_output(Path(file.filename or "upload").name)
     analysis_id = str(uuid.uuid4())
