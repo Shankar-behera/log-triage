@@ -470,3 +470,39 @@ def test_cli_rejects_pii_redaction_with_no_redact(runner, tmp_path):
     result = runner.invoke(app, [str(log), "--redact-pii", "--no-redact"])
     assert result.exit_code == 2
     assert "cannot be combined" in result.output
+
+def test_cli_optional_pii_redaction_covers_source_metadata(runner, tmp_path):
+    log = tmp_path / "alice@example.com.log"
+    log.write_text("ERROR service unavailable\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [str(log), "--redact-pii", "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "alice@example.com" not in result.output
+
+
+def test_cli_optional_pii_redaction_covers_exported_report_source(
+    runner, tmp_path
+):
+    log = tmp_path / "alice@example.com.log"
+    report_path = tmp_path / "incident.json"
+    log.write_text("ERROR service unavailable\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            str(log),
+            "--redact-pii",
+            "--report",
+            str(report_path),
+            "--report-format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert report_path.is_file()
+    assert "alice@example.com" not in report_path.read_text(encoding="utf-8")

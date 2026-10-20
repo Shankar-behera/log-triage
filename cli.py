@@ -399,6 +399,9 @@ def triage(
         click.echo("error: AI explanation failed; no report was written", err=True)
         raise click.exceptions.Exit(3) from None
     source_label = "<stdin>" if path == "-" else str(Path(path))
+    source_label = sanitize_output(
+        source_label, redact=not no_redact, pii=redact_pii
+    )
     if isinstance(result.get("events"), list):
         for event in result["events"]:
             if isinstance(event, dict):
@@ -409,13 +412,17 @@ def triage(
         "mode": "best-effort" if not no_redact else "disabled",
         "pii": redact_pii,
     }
-    result = sanitize_output(result, redact=not no_redact)
+    result = sanitize_output(
+        result, redact=not no_redact, pii=redact_pii
+    )
 
     if report_path is not None:
         try:
             report_text = build_report(
                 result=result,
-                source=path,
+                source=sanitize_output(
+                    path, redact=not no_redact, pii=redact_pii
+                ),
                 report_format=report_format.lower(),
                 redact=not no_redact,
             )
