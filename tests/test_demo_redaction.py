@@ -135,3 +135,21 @@ def test_asgi_body_limit_allows_small_chunked_body_without_content_length():
     asyncio.run(RequestBodyLimitMiddleware(downstream, max_bytes=64)(scope, receive, send))
     assert received == [{"type": "http.request", "body": b"abcdef", "more_body": False}]
     assert sent[0]["status"] == 204
+
+
+def test_file_endpoint_redacts_secret_like_filename(client):
+    response = client.post(
+        "/analyze",
+        files={
+            "file": (
+                "password=filename-secret.log",
+                b"INFO ready\n",
+                "text/plain",
+            )
+        },
+        data={"quick": "true"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = json.dumps(response.json())
+    assert "filename-secret" not in body

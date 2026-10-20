@@ -20,7 +20,7 @@ from app.analyzer import get_analyzer, LLMUnavailable
 from app.cache import result_cache
 from app.config import settings
 from app.models import LogAnalysisRequest, HealthStatus, create_success_response
-from app.redaction import redact_log_input
+from app.redaction import redact_log_input, sanitize_output
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -192,7 +192,7 @@ async def analyze_file(file: UploadFile = File(...), quick: bool = Form(False)):
     except LLMUnavailable as e:
         raise HTTPException(status_code=503, detail=f"LLM step failed: {e}")
 
-    result["source_filename"] = Path(file.filename or "upload").name
+    result["source_filename"] = sanitize_output(Path(file.filename or "upload").name)
     analysis_id = str(uuid.uuid4())
     result["analysis_id"] = analysis_id
     result_cache.store_recent(analysis_id, result)
