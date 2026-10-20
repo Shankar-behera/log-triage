@@ -135,7 +135,6 @@ def test_service_runner_rejects_non_loopback_hosts():
 
 
 def test_request_and_response_match_published_json_schemas(client):
-    from pathlib import Path
     import jsonschema
 
     root = __import__("pathlib").Path(__file__).resolve().parents[1]
