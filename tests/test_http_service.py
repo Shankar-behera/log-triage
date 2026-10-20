@@ -225,3 +225,24 @@ def test_oversized_request_error_uses_same_request_id_as_header(client):
     request_id = response.headers.get("x-request-id")
     assert request_id
     assert response.json()["error"]["request_id"] == request_id
+
+
+def test_service_runner_reports_missing_optional_dependencies(monkeypatch, capsys):
+    import builtins
+    import sys
+    from logtriage_service.__main__ import main
+
+    real_import = builtins.__import__
+
+    def import_without_service_dependencies(name, *args, **kwargs):
+        if name == "uvicorn" or name.startswith("fastapi"):
+            raise ImportError("simulated missing optional dependency")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", import_without_service_dependencies)
+    monkeypatch.setattr(sys, "argv", ["log-triage-server"])
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert "pip install 'log-triage[service]'" in str(exc.value)
