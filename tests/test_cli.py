@@ -425,6 +425,45 @@ def test_cli_optional_pii_redaction(runner, tmp_path):
     assert '"pii": true' in result.output
 
 
+@pytest.mark.parametrize("report_format", ["markdown", "json"])
+def test_cli_optional_pii_redaction_applies_to_exported_report(
+    runner, tmp_path, report_format
+):
+    log = tmp_path / "pii-report.log"
+    report_path = tmp_path / f"incident.{report_format}"
+
+    log.write_text(
+        "2025-01-01 10:00:00 ERROR [auth] "
+        "alice@example.com from 203.0.113.45 failed\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            str(log),
+            "--redact-pii",
+            "--report",
+            str(report_path),
+            "--report-format",
+            report_format,
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert report_path.is_file()
+
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "alice@example.com" not in report_text
+    assert "203.0.113.45" not in report_text
+
+    if report_format == "json":
+        import json
+
+        report_data = json.loads(report_text)
+        assert report_data["analysis"]["redaction"]["pii"] is True
+
+
 def test_cli_rejects_pii_redaction_with_no_redact(runner, tmp_path):
     log = tmp_path / "pii.log"
     log.write_text("INFO ready\n", encoding="utf-8")
