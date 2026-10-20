@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+recursive-include app *.py
+recursive-include logtriage *.py
+recursive-include logtriage_service *.py
+recursive-include contracts *.yaml *.json *.md

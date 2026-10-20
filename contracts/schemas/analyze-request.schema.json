@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://log-triage.local/contracts/v1/analyze-request.schema.json",
+  "title": "Log Triage Analyze Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "input"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "content"],
+      "properties": {
+        "format": {"const": "text"},
+        "content": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1, "maxLength": 512}
+      }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "analysis_mode": {"const": "rules", "default": "rules"},
+        "redact": {"type": "boolean", "default": true},
+        "include_events": {"type": "boolean", "default": true}
+      }
+    }
+  }
+}

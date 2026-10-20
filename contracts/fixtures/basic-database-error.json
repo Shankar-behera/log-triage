@@ -1,0 +1,24 @@
+{
+  "name": "basic-database-error",
+  "input": {
+    "schema_version": "1.0",
+    "input": {
+      "format": "text",
+      "content": "2026-10-19T10:15:00Z ERROR payment-service: database unavailable",
+      "source": "payment-service.log"
+    },
+    "options": {
+      "analysis_mode": "rules",
+      "redact": true,
+      "include_events": true
+    }
+  },
+  "expect": {
+    "schema_version": "1.0",
+    "event_count": 1,
+    "severity": "ERROR",
+    "source": "payment-service.log",
+    "source_line": 1,
+    "has_findings": true
+  }
+}

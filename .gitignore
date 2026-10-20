@@ -1,0 +1,36 @@
+﻿__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+*.db
+.idea/
+.vscode/
+.DS_Store
+demo.gif
+# Local package-validation environment
+.venv-package-test/
+
+# Generated local incident reports
+/incident-outside.md
+/installed-wheel-report.json
+/real-log-phase2-report.json
+/real-log-report.json
+
+# Generated demo outputs; keep curated examples under demo/
+
+
+/demo-output/
+
+# Local synthetic test log
+test log.txt
+
+# Local source backups
+*.bak
+*.phase1-backup
+*.phase2-backup

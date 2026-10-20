@@ -1,0 +1,39 @@
+name: Log Triage
+description: Analyze CI logs and fail builds at a configured severity threshold
+
+inputs:
+  log-path:
+    description: Path to a log file or directory
+    required: true
+    default: .
+  fail-on:
+    description: Severity threshold that fails the workflow
+    required: false
+    default: error
+  format:
+    description: Output format (text or json)
+    required: false
+    default: text
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install log-triage from action source
+      shell: bash
+      run: python -m pip install "$GITHUB_ACTION_PATH"
+
+    - name: Analyze logs
+      shell: bash
+      env:
+        LOG_TRIAGE_PATH: ${{ inputs.log-path }}
+        LOG_TRIAGE_FAIL_ON: ${{ inputs.fail-on }}
+        LOG_TRIAGE_FORMAT: ${{ inputs.format }}
+      run: |
+        log-triage "$LOG_TRIAGE_PATH" \
+          --fail-on "$LOG_TRIAGE_FAIL_ON" \
+          --format "$LOG_TRIAGE_FORMAT"

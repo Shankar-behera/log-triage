@@ -1,0 +1,374 @@
+openapi: 3.1.0
+info:
+  title: Log Triage API
+  description: Local-first, rules-based log analysis API. AI is not required.
+  version: '1.0'
+paths:
+  /v1/health:
+    get:
+      tags:
+      - meta
+      summary: Health
+      operationId: health_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Health V1 Health Get
+  /v1/capabilities:
+    get:
+      tags:
+      - meta
+      summary: Capabilities
+      operationId: capabilities_v1_capabilities_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Capabilities V1 Capabilities Get
+  /v1/analyze:
+    post:
+      tags:
+      - analysis
+      summary: Analyze
+      operationId: analyze_v1_analyze_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+        '400':
+          description: Invalid request or unsupported analysis mode.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Request exceeds the configured size limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: The configured concurrent analysis limit was reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected failure with safe external details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    AnalyzeInput:
+      properties:
+        format:
+          type: string
+          const: text
+          title: Format
+          default: text
+        content:
+          type: string
+          minLength: 1
+          title: Content
+        source:
+          type: string
+          maxLength: 512
+          minLength: 1
+          title: Source
+          default: <memory>
+      additionalProperties: false
+      type: object
+      required:
+      - content
+      title: AnalyzeInput
+    AnalyzeOptions:
+      properties:
+        analysis_mode:
+          type: string
+          const: rules
+          title: Analysis Mode
+          default: rules
+        redact:
+          type: boolean
+          title: Redact
+          default: true
+        include_events:
+          type: boolean
+          title: Include Events
+          default: true
+      additionalProperties: false
+      type: object
+      title: AnalyzeOptions
+    AnalyzeRequest:
+      properties:
+        schema_version:
+          type: string
+          const: '1.0'
+          title: Schema Version
+          default: '1.0'
+        input:
+          $ref: '#/components/schemas/AnalyzeInput'
+        options:
+          $ref: '#/components/schemas/AnalyzeOptions'
+      additionalProperties: false
+      type: object
+      required:
+      - input
+      title: AnalyzeRequest
+    AnalyzeResponse:
+      properties:
+        schema_version:
+          type: string
+          const: '1.0'
+          title: Schema Version
+          default: '1.0'
+        request_id:
+          type: string
+          title: Request Id
+        status:
+          type: string
+          enum:
+          - complete
+          - partial
+          title: Status
+          default: complete
+        summary:
+          $ref: '#/components/schemas/Summary'
+        findings:
+          items:
+            $ref: '#/components/schemas/Finding'
+          type: array
+          title: Findings
+        events:
+          items:
+            $ref: '#/components/schemas/Event'
+          type: array
+          title: Events
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      additionalProperties: false
+      type: object
+      required:
+      - request_id
+      - summary
+      title: AnalyzeResponse
+    ErrorDetail:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+      additionalProperties: false
+      type: object
+      required:
+      - code
+      - message
+      title: ErrorDetail
+    ErrorResponse:
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+      additionalProperties: false
+      type: object
+      required:
+      - error
+      title: ErrorResponse
+    Event:
+      properties:
+        event_id:
+          type: string
+          title: Event Id
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+        source_line:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Source Line
+        source_end_line:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Source End Line
+        timestamp:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timestamp
+        severity:
+          type: string
+          title: Severity
+          default: UNKNOWN
+        service:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Service
+        message:
+          type: string
+          title: Message
+        parse_status:
+          type: string
+          title: Parse Status
+          default: unknown
+      additionalProperties: false
+      type: object
+      required:
+      - event_id
+      - message
+      title: Event
+    Evidence:
+      properties:
+        event_id:
+          type: string
+          title: Event Id
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+        line_start:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Line Start
+        line_end:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Line End
+      additionalProperties: false
+      type: object
+      required:
+      - event_id
+      title: Evidence
+    Finding:
+      properties:
+        id:
+          type: string
+          title: Id
+        code:
+          type: string
+          title: Code
+        severity:
+          type: string
+          title: Severity
+        title:
+          type: string
+          title: Title
+        description:
+          type: string
+          title: Description
+        confidence:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Confidence
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - code
+      - severity
+      - title
+      - description
+      title: Finding
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    Summary:
+      properties:
+        text:
+          type: string
+          title: Text
+        event_count:
+          type: integer
+          title: Event Count
+        finding_count:
+          type: integer
+          title: Finding Count
+        priority:
+          type: string
+          title: Priority
+      additionalProperties: false
+      type: object
+      required:
+      - text
+      - event_count
+      - finding_count
+      - priority
+      title: Summary
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+servers:
+- url: http://127.0.0.1:8765
+  description: Default local-only service

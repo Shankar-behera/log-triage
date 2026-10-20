@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>log-triage demo</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-laptop-code"></i> log-triage</h1>
+            <p class="subtitle">Web demo — the CLI is the primary product</p>
+            <div class="model-info">
+                <span class="chip" id="modelStatus"><i class="fas fa-microchip"></i> Checking...</span>
+                <span class="chip"><i class="fas fa-terminal"></i> CLI: <code>pip install log-triage</code></span>
+            </div>
+        </header>
+
+        <div class="upload-section">
+            <div class="input-methods">
+                <div class="method-card">
+                    <h3><i class="fas fa-edit"></i> Paste Log Text</h3>
+                    <textarea id="logText" placeholder="Paste your logs here..."></textarea>
+                    <button class="btn" style="margin-top:10px;width:100%;" onclick="analyzeText()">
+                        <i class="fas fa-play"></i> Analyze
+                    </button>
+                </div>
+                <div class="method-card">
+                    <h3><i class="fas fa-file-upload"></i> Upload File</h3>
+                    <div class="upload-area" id="dropArea">
+                        <i class="fas fa-cloud-upload-alt fa-2x"></i>
+                        <p>Drag & drop or click</p>
+                        <p style="font-size:12px;color:#666;">Supports: .txt, .log, .json</p>
+                        <input type="file" id="fileInput" accept=".txt,.log,.json" hidden>
+                        <button class="btn secondary" onclick="document.getElementById('fileInput').click()">
+                            <i class="fas fa-folder-open"></i> Browse
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:20px;flex-wrap:wrap;gap:15px;">
+                <label><input type="checkbox" id="quickMode"> Quick mode (no LLM)</label>
+                <button class="btn secondary" onclick="loadSample()"><i class="fas fa-vial"></i> Sample</button>
+            </div>
+        </div>
+
+        <div class="analysis-section hidden" id="analysisSection">
+            <h2><i class="fas fa-chart-bar"></i> Results</h2>
+            <div class="stats-bar" style="margin-top:20px;">
+                <div class="stat"><span class="stat-label">Status</span>
+                    <span class="stat-value" id="statusText">-</span></div>
+                <div class="stat"><span class="stat-label">Lines</span>
+                    <span class="stat-value" id="lineCount">0</span></div>
+                <div class="stat"><span class="stat-label">Errors</span>
+                    <span class="stat-value error" id="errorCount">0</span></div>
+                <div class="stat"><span class="stat-label">Time</span>
+                    <span class="stat-value" id="timeText">-</span></div>
+            </div>
+            <div class="results-container">
+                <div class="tab-header">
+                    <button class="tab-btn active" onclick="switchTab('summary')">Summary</button>
+                    <button class="tab-btn" onclick="switchTab('details')">Details</button>
+                    <button class="tab-btn" onclick="switchTab('errors')">Errors</button>
+                </div>
+                <div class="tab-content">
+                    <div id="summaryTab" class="tab-pane active"><pre id="summaryContent">-</pre></div>
+                    <div id="detailsTab" class="tab-pane"><pre id="detailsContent">-</pre></div>
+                    <div id="errorsTab" class="tab-pane"><pre id="errorsContent">-</pre></div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Rule-based analysis runs offline • Full analysis uses Groq API</p>
+            <p class="health-status">
+                <i class="fas fa-circle health-icon" id="healthIcon"></i>
+                <span id="healthStatus">Checking...</span>
+            </p>
+        </footer>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>

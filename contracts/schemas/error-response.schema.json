@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://log-triage.local/contracts/v1/error-response.schema.json",
+  "title": "Log Triage Error Response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "request_id"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "request_id": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
