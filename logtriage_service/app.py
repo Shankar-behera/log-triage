@@ -150,20 +150,58 @@ class MaxBodySizeMiddleware:
 
         await self.app(scope, replay_receive, send)
 
+
     @staticmethod
-    async def _json_error(send: Send, status: int, code: str, message: str) -> None:
-        payload = json.dumps({"error": {"code": code, "message": message, "request_id": None}}).encode("utf-8")
-        await send({"type": "http.response.start", "status": status, "headers": [
+    async def _json_error(
+        send: Send,
+        status: int,
+        code: str,
+        message: str,
+        request_id: Optional[str] = None,
+    ) -> None:
+        payload = json.dumps({
+            "error": {
+                "code": code,
+                "message": message,
+                "request_id": request_id,
+            }
+        }).encode("utf-8")
+
+        headers = [
             (b"content-type", b"application/json"),
             (b"content-length", str(len(payload)).encode("ascii")),
-        ]})
+            (b"cache-control", b"no-store"),
+        ]
+        if request_id:
+            headers.append((b"x-request-id", request_id.encode("ascii")))
+
+        await send({
+            "type": "http.response.start",
+            "status": status,
+            "headers": headers,
+        })
         await send({"type": "http.response.body", "body": payload})
 
     async def _too_large(self, scope: Scope, send: Send) -> None:
-        await self._json_error(send, 413, "INPUT_TOO_LARGE", "Request body exceeds the configured limit.")
+        request_id = scope.get("state", {}).get("request_id")
+        await self._json_error(
+            send,
+            413,
+            "INPUT_TOO_LARGE",
+            "Request body exceeds the configured limit.",
+            request_id,
+        )
 
     async def _bad_length(self, scope: Scope, send: Send) -> None:
-        await self._json_error(send, 400, "INVALID_REQUEST", "Invalid Content-Length header.")
+        request_id = scope.get("state", {}).get("request_id")
+        await self._json_error(
+            send,
+            400,
+            "INVALID_REQUEST",
+            "Invalid Content-Length header.",
+            request_id,
+        )
+
 
 
 def _error(status_code: int, code: str, message: str, request_id: Optional[str] = None) -> JSONResponse:

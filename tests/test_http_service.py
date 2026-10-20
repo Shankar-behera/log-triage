@@ -213,3 +213,15 @@ def test_redaction_opt_out_is_explicit_and_applies_consistently(client):
     response = client.post("/v1/analyze", json=payload)
     assert response.status_code == 200
     assert "hunter2" in response.text
+
+def test_oversized_request_error_uses_same_request_id_as_header(client):
+    response = client.post(
+        "/v1/analyze",
+        content=b"x" * 5000,
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    request_id = response.headers.get("x-request-id")
+    assert request_id
+    assert response.json()["error"]["request_id"] == request_id
