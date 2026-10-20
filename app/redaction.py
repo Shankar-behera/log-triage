@@ -42,20 +42,41 @@ def redact_log_input(value: str, *, pii: bool = False) -> str:
     return redact_text(value, pii=pii)
 
 
-def sanitize_output(value: Any, redact: bool = True) -> Any:
+def sanitize_output(
+    value: Any,
+    redact: bool = True,
+    pii: bool = False,
+) -> Any:
     """Redact strings recursively and escape terminal control characters."""
     if isinstance(value, str):
         if redact:
-            value = redact_text(value)
+            value = redact_text(value, pii=pii)
         return "".join(
             ch if ch in "\n\t" or (ord(ch) >= 32 and ord(ch) != 127)
             else f"\\x{ord(ch):02x}"
             for ch in value
         )
     if isinstance(value, list):
-        return [sanitize_output(item, redact=redact) for item in value]
+        return [sanitize_output(item, redact=redact, pii=pii) for item in value]
     if isinstance(value, tuple):
-        return [sanitize_output(item, redact=redact) for item in value]
+        return [sanitize_output(item, redact=redact, pii=pii) for item in value]
     if isinstance(value, dict):
-        return {sanitize_output(k, redact=redact): sanitize_output(v, redact=redact) for k, v in value.items()}
+        sanitized = {}
+        for key, item in value.items():
+            safe_key = sanitize_output(key, redact=redact, pii=pii)
+            safe_value = sanitize_output(item, redact=redact, pii=pii)
+            if safe_key in sanitized:
+                # Keep colliding redacted keys distinct without restoring
+                # the original sensitive key.
+                base_key = (
+                    safe_key if isinstance(safe_key, str) else str(safe_key)
+                )
+                suffix = 2
+                candidate = f"{base_key}#{suffix}"
+                while candidate in sanitized:
+                    suffix += 1
+                    candidate = f"{base_key}#{suffix}"
+                safe_key = candidate
+            sanitized[safe_key] = safe_value
+        return sanitized
     return value

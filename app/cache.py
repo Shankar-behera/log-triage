@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.config import settings
-
+from app.redaction import sanitize_output
 
 class ResultCache:
     MAX_CACHE_ENTRIES = 1000
@@ -83,7 +83,7 @@ class ResultCache:
         return False
 
     def _purge_legacy_entries(self) -> None:
-        """Remove legacy cache rows that may contain full event payloads."""
+        """Remove unsafe legacy payloads and sanitize existing cache values."""
         try:
             with self._connect() as conn:
                 for table in ("analysis_cache", "recent_results"):
@@ -95,17 +95,28 @@ class ResultCache:
                         try:
                             payload = json.loads(row["result_json"])
                         except (TypeError, ValueError):
-                            # An unreadable cache payload cannot be verified safe.
-                            should_delete = True
-                        else:
-                            should_delete = self._contains_legacy_payload(
-                                payload
-                            )
-
-                        if should_delete:
+                            # Unreadable data cannot be verified safe.
                             conn.execute(
                                 f"DELETE FROM {table} WHERE rowid = ?",
                                 (row["rowid"],),
+                            )
+                            continue
+
+                        if self._contains_legacy_payload(payload):
+                            conn.execute(
+                                f"DELETE FROM {table} WHERE rowid = ?",
+                                (row["rowid"],),
+                            )
+                            continue
+
+                        safe_payload = sanitize_output(payload, pii=True)
+                        safe_json = json.dumps(safe_payload, default=str)
+
+                        if safe_json != row["result_json"]:
+                            conn.execute(
+                                f"UPDATE {table} SET result_json = ? "
+                                "WHERE rowid = ?",
+                                (safe_json, row["rowid"]),
                             )
 
                 conn.commit()
@@ -164,11 +175,12 @@ class ResultCache:
                 (cache_key,),
             )
             conn.commit()
-            return json.loads(row["result_json"])
+            return sanitize_output(json.loads(row["result_json"]), pii=True)
 
     def set(self, cache_key: str, result: Dict[str, Any]) -> None:
         if not self.enabled:
             return
+        safe_result = sanitize_output(result, pii=True)
         with self._connect() as conn:
             conn.execute("""
                 INSERT INTO analysis_cache (cache_key, result_json, created_at, hit_count)
@@ -176,7 +188,7 @@ class ResultCache:
                 ON CONFLICT(cache_key) DO UPDATE SET
                     result_json = excluded.result_json,
                     created_at = excluded.created_at
-            """, (cache_key, json.dumps(result, default=str), time.time()))
+            """, (cache_key, json.dumps(safe_result, default=str), time.time()))
             conn.execute("""
                 DELETE FROM analysis_cache
                 WHERE cache_key IN (
@@ -215,6 +227,7 @@ class ResultCache:
             key: value for key, value in result.items()
             if key not in {"events", "raw", "timeline", "root_cause_signals", "cascading_failures"}
         }
+        safe_result = sanitize_output(safe_result, pii=True)
         with self._connect() as conn:
             conn.execute("""
                 INSERT INTO recent_results (analysis_id, result_json, created_at)
@@ -238,7 +251,11 @@ class ResultCache:
                 "SELECT result_json FROM recent_results WHERE analysis_id = ?",
                 (analysis_id,),
             ).fetchone()
-            return json.loads(row["result_json"]) if row else None
+            return (
+                sanitize_output(json.loads(row["result_json"]), pii=True)
+                if row
+                else None
+            )
 
 
 class _LazyResultCache:

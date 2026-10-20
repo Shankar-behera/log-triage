@@ -78,3 +78,165 @@ def test_disabled_cache_does_not_store_or_return_recent_results(tmp_path):
         ).fetchone()[0]
 
     assert count == 0
+
+def test_cache_redacts_nested_secrets_and_pii(cache):
+    import json
+
+    key = ResultCache.make_key("privacy-test", "full", "model", 0.2)
+    cache.set(
+        key,
+        {
+            "summary": "Contact alice@example.com from 192.0.2.10",
+            "details": [{"message": "password=hunter2"}],
+        },
+    )
+
+    # Assert on the *persisted* row, not just the read path, so this
+    # catches regressions in the set() sanitize-before-write step.
+    with cache._connect() as conn:
+        persisted = conn.execute(
+            "SELECT result_json FROM analysis_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()["result_json"]
+
+    result = json.loads(persisted)
+    serialized = json.dumps(result)
+
+    assert "alice@example.com" not in serialized
+    assert "192.0.2.10" not in serialized
+    assert "hunter2" not in serialized
+    assert "[REDACTED_EMAIL]" in serialized
+    assert "[REDACTED_IP]" in serialized
+
+
+def test_recent_results_redact_nested_secrets_and_pii(cache):
+    import json
+
+    cache.store_recent(
+        "privacy-recent",
+        {
+            "summary": "Contact alice@example.com from 192.0.2.10",
+            "details": [{"message": "token=synthetic-secret"}],
+        },
+    )
+
+    with cache._connect() as conn:
+        persisted = conn.execute(
+            "SELECT result_json FROM recent_results WHERE analysis_id = ?",
+            ("privacy-recent",),
+        ).fetchone()["result_json"]
+
+    result = json.loads(persisted)
+    serialized = json.dumps(result)
+
+    assert "alice@example.com" not in serialized
+    assert "192.0.2.10" not in serialized
+    assert "synthetic-secret" not in serialized
+    assert "[REDACTED_EMAIL]" in serialized
+    assert "[REDACTED_IP]" in serialized
+
+
+def test_initialization_sanitizes_existing_cache_rows_on_disk(tmp_path):
+    import json
+    import sqlite3
+    import time
+    db_path = tmp_path / "legacy-sensitive.db"
+
+    # Create the schema before injecting rows from an older implementation.
+    ResultCache(db_path=str(db_path), enabled=True)
+
+    legacy_payload = {
+        "summary": "Contact alice@example.com from 192.0.2.10; password=hunter2",
+        "details": [{"message": "token=synthetic-secret"}],
+    }
+    raw_json = json.dumps(legacy_payload)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO analysis_cache
+                (cache_key, result_json, created_at, hit_count)
+            VALUES (?, ?, ?, ?)
+            """,
+            ("legacy-key", raw_json, time.time(), 0),
+        )
+        conn.execute(
+            """
+            INSERT INTO recent_results
+                (analysis_id, result_json, created_at)
+            VALUES (?, ?, ?)
+            """,
+            ("legacy-id", raw_json, time.time()),
+        )
+        conn.commit()
+
+    # Reinitialization runs the migration against both tables.
+    migrated = ResultCache(db_path=str(db_path), enabled=True)
+
+    with sqlite3.connect(db_path) as conn:
+        cache_json = conn.execute(
+            "SELECT result_json FROM analysis_cache WHERE cache_key = ?",
+            ("legacy-key",),
+        ).fetchone()[0]
+        recent_json = conn.execute(
+            "SELECT result_json FROM recent_results WHERE analysis_id = ?",
+            ("legacy-id",),
+        ).fetchone()[0]
+
+    for persisted_json in (cache_json, recent_json):
+        assert "alice@example.com" not in persisted_json
+        assert "192.0.2.10" not in persisted_json
+        assert "hunter2" not in persisted_json
+        assert "synthetic-secret" not in persisted_json
+        assert "[REDACTED_EMAIL]" in persisted_json
+        assert "[REDACTED_IP]" in persisted_json
+        assert "[REDACTED]" in persisted_json
+
+    # Confirm the migrated cache remains readable.
+    assert migrated.get("legacy-key")["summary"]
+    assert migrated.get_recent("legacy-id")["summary"]
+def test_cache_sanitization_preserves_distinct_safe_keys(cache):
+    key = ResultCache.make_key("key-compatibility", "full", "model", 0.2)
+
+    cache.set(
+        key,
+        {
+            "summary": "First result",
+            "details": "Second result",
+        },
+    )
+
+    result = cache.get(key)
+
+    assert result is not None
+    assert result["summary"] == "First result"
+    assert result["details"] == "Second result"
+
+
+def test_cache_sanitization_does_not_silently_drop_colliding_keys(cache):
+    import json
+
+    key = ResultCache.make_key("key-collision-test", "full", "model", 0.2)
+    cache.set(
+        key,
+        {
+            "alice@example.com": "first value",
+            "bob@example.com": "second value",
+        },
+    )
+
+    with cache._connect() as conn:
+        persisted = conn.execute(
+            "SELECT result_json FROM analysis_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()["result_json"]
+
+    result = json.loads(persisted)
+
+    # Both values must survive, while the original email keys stay private.
+    assert len(result) == 2
+    assert set(result.values()) == {"first value", "second value"}
+    assert "alice@example.com" not in persisted
+    assert "bob@example.com" not in persisted
+    assert "[REDACTED_EMAIL]" in result
+    assert "[REDACTED_EMAIL]#2" in result
