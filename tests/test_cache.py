@@ -58,3 +58,23 @@ def test_disabled_returns_none(tmp_path):
     key = ResultCache.make_key("x", "quick", "m", 0.2)
     c.set(key, {"summary": "ignored"})
     assert c.get(key) is None
+
+
+def test_disabled_cache_does_not_store_or_return_recent_results(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "disabled-cache.db"
+    cache = ResultCache(db_path=str(db_path), enabled=False)
+
+    cache.store_recent("disabled-incident", {
+        "summary": "must not persist",
+    })
+
+    assert cache.get_recent("disabled-incident") is None
+
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM recent_results"
+        ).fetchone()[0]
+
+    assert count == 0

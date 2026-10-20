@@ -209,6 +209,8 @@ class ResultCache:
     def store_recent(self, analysis_id: str, result: Dict[str, Any]) -> None:
         # The recent-results buffer is a compact UI summary, not an event store.
         # Do not persist event lists, raw log lines, timelines, or source evidence.
+        if not self.enabled:
+            return
         safe_result = {
             key: value for key, value in result.items()
             if key not in {"events", "raw", "timeline", "root_cause_signals", "cascading_failures"}
@@ -229,6 +231,8 @@ class ResultCache:
             conn.commit()
 
     def get_recent(self, analysis_id: str) -> Optional[Dict[str, Any]]:
+        if not self.enabled:
+            return None
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT result_json FROM recent_results WHERE analysis_id = ?",
