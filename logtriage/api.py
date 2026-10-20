@@ -67,12 +67,17 @@ class Analyzer:
         raw_result = self._engine.quick_analysis(
             safe_content, redact=options.redact
         )
+        safe_source = (
+            redact_text(options.source, pii=True)
+            if options.redact
+            else options.source
+        )
         events = raw_result.get("events", [])
         if isinstance(events, list):
             for event in events:
                 if isinstance(event, dict):
-                    event["source"] = options.source
-            assign_event_ids(events, options.source)
+                    event["source"] = safe_source
+            assign_event_ids(events, safe_source)
 
         if not options.include_events:
             raw_result.pop("events", None)

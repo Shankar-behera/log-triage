@@ -105,3 +105,40 @@ def test_importing_public_package_does_not_create_a_database(tmp_path):
 
     assert completed.stdout.strip() == "0.1.0"
     assert not database.exists()
+
+
+def test_source_label_pii_is_redacted_by_default():
+    source = "alice@example.com"
+    result = Analyzer().analyze(
+        "ERROR [auth] login failed",
+        options=AnalysisOptions(source=source, redact=True),
+    )
+
+    serialized = json.dumps(result.to_dict())
+    assert source not in serialized
+    assert "[REDACTED_EMAIL]" in serialized
+    assert result.events[0]["source"] == "[REDACTED_EMAIL]"
+
+
+def test_source_label_redaction_respects_explicit_opt_out():
+    source = "alice@example.com"
+    result = Analyzer().analyze(
+        "ERROR [auth] login failed",
+        options=AnalysisOptions(source=source, redact=False),
+    )
+
+    assert result.events[0]["source"] == source
+    assert source in json.dumps(result.to_dict())
+
+
+def test_source_label_ip_is_redacted_by_default():
+    source = "192.168.1.42"
+    result = Analyzer().analyze(
+        "ERROR [auth] login failed",
+        options=AnalysisOptions(source=source, redact=True),
+    )
+
+    serialized = json.dumps(result.to_dict())
+    assert source not in serialized
+    assert "[REDACTED_IP]" in serialized
+    assert result.events[0]["source"] == "[REDACTED_IP]"
