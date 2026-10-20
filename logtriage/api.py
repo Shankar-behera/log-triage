@@ -1,4 +1,4 @@
-"""Stable in-process API for deterministic Log Triage analysis."""
+﻿"""Stable in-process API for deterministic Log Triage analysis."""
 
 from __future__ import annotations
 
@@ -8,8 +8,13 @@ from app.analyzer import get_analyzer
 from app.provenance import assign_event_ids
 from app.redaction import redact_text, sanitize_output
 
-from .exceptions import InvalidInputError, UnsupportedModeError
+from .exceptions import InvalidInputError, ProviderError, UnsupportedModeError
 from .options import AnalysisOptions
+from .providers import (
+    ExplanationProvider,
+    ExplanationRequest,
+    ExplanationResponse,
+)
 from .results import AnalysisResult
 
 
@@ -75,3 +80,65 @@ class Analyzer:
         # rules-only call; control characters are still escaped.
         raw_result = sanitize_output(raw_result, redact=options.redact)
         return AnalysisResult(data=raw_result)
+
+    async def explain(
+        self,
+        content: str,
+        *,
+        provider: ExplanationProvider,
+        model: Optional[str] = None,
+        max_tokens: int = 512,
+    ) -> ExplanationResponse:
+        """Request an optional explanation with mandatory PII redaction.
+
+        Input content, provider output, provider name, and model name are always
+        redacted for PII before being used or returned. There is no way to
+        disable this redaction.
+        """
+        if not isinstance(content, str) or not content.strip():
+            raise InvalidInputError("content must be a non-empty string")
+
+        if not callable(getattr(provider, "explain", None)):
+            raise InvalidInputError(
+                "provider must implement async explain(request)"
+            )
+
+        try:
+            request = ExplanationRequest(
+                redacted_content=redact_text(content, pii=True),
+                model=model,
+                max_tokens=max_tokens,
+            )
+        except (TypeError, ValueError) as exc:
+            raise InvalidInputError(str(exc)) from None
+
+        try:
+            response = await provider.explain(request)
+        except Exception:
+            raise ProviderError("explanation provider failed") from None
+
+        if not isinstance(response, ExplanationResponse):
+            raise ProviderError("provider returned an invalid response")
+
+        try:
+            safe_text = sanitize_output(
+                redact_text(response.text, pii=True)
+            )
+            safe_provider = sanitize_output(
+                redact_text(response.provider, pii=True)
+            )
+            safe_model = (
+                sanitize_output(
+                    redact_text(response.model, pii=True)
+                )
+                if response.model is not None
+                else None
+            )
+
+            return ExplanationResponse(
+                text=safe_text,
+                provider=safe_provider,
+                model=safe_model,
+            )
+        except (TypeError, ValueError):
+            raise ProviderError("provider returned an invalid response") from None
