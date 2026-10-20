@@ -20,6 +20,16 @@ class ResultCache:
     MAX_CACHE_ENTRIES = 1000
     MAX_RECENT_RESULTS = 50
 
+    _LEGACY_PAYLOAD_KEYS = frozenset(
+        {
+            "events",
+            "raw",
+            "timeline",
+            "root_cause_signals",
+            "cascading_failures",
+        }
+    )
+
     def __init__(self, db_path: Optional[str] = None, enabled: Optional[bool] = None):
         """Initialize the cache.
 
@@ -53,14 +63,54 @@ class ResultCache:
             except OSError: pass
         self._purge_legacy_entries()
 
+    @classmethod
+    def _contains_legacy_payload(cls, value: Any) -> bool:
+        """Return whether JSON contains a prohibited payload key."""
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if (
+                    isinstance(key, str)
+                    and key.casefold() in cls._LEGACY_PAYLOAD_KEYS
+                ):
+                    return True
+                if cls._contains_legacy_payload(child):
+                    return True
+        elif isinstance(value, list):
+            return any(
+                cls._contains_legacy_payload(item) for item in value
+            )
+
+        return False
+
     def _purge_legacy_entries(self) -> None:
         """Remove legacy cache rows that may contain full event payloads."""
         try:
             with self._connect() as conn:
                 for table in ("analysis_cache", "recent_results"):
-                    conn.execute(f"DELETE FROM {table} WHERE lower(result_json) LIKE '%\"events\"%' OR lower(result_json) LIKE '%\"raw\"%'")
+                    rows = conn.execute(
+                        f"SELECT rowid, result_json FROM {table}"
+                    ).fetchall()
+
+                    for row in rows:
+                        try:
+                            payload = json.loads(row["result_json"])
+                        except (TypeError, ValueError):
+                            # An unreadable cache payload cannot be verified safe.
+                            should_delete = True
+                        else:
+                            should_delete = self._contains_legacy_payload(
+                                payload
+                            )
+
+                        if should_delete:
+                            conn.execute(
+                                f"DELETE FROM {table} WHERE rowid = ?",
+                                (row["rowid"],),
+                            )
+
                 conn.commit()
         except sqlite3.Error:
+            # Cache cleanup remains best-effort if SQLite is unavailable.
             pass
 
     def _connect(self) -> sqlite3.Connection:

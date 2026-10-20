@@ -102,3 +102,81 @@ def test_explain_without_key_fails_before_reading_input(monkeypatch):
     assert result.exit_code == 2
     assert 'requires GROQ_API_KEY' in result.output
     assert 'not found' not in result.output
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "events",
+        "raw",
+        "timeline",
+        "root_cause_signals",
+        "cascading_failures",
+    ],
+)
+def test_legacy_cache_purge_removes_all_prohibited_payload_keys(
+    tmp_path, field
+):
+    import sqlite3
+
+    from app.cache import ResultCache
+
+    db = tmp_path / "legacy-cache.db"
+    ResultCache(str(db), enabled=True)
+
+    payload = json.dumps(
+        {"summary": "legacy", "nested": {field: [{"message": "sensitive"}]}}
+    )
+
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            """
+            INSERT INTO analysis_cache
+                (cache_key, result_json, created_at, hit_count)
+            VALUES (?, ?, ?, ?)
+            """,
+            (f"legacy-{field}", payload, 1.0, 0),
+        )
+        conn.execute(
+            """
+            INSERT INTO recent_results
+                (analysis_id, result_json, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (f"legacy-{field}", payload, 1.0),
+        )
+
+    reopened = ResultCache(str(db), enabled=True)
+
+    assert reopened.get(f"legacy-{field}") is None
+    assert reopened.get_recent(f"legacy-{field}") is None
+
+
+def test_legacy_cache_purge_keeps_benign_text(tmp_path):
+    import sqlite3
+    import time
+    from app.cache import ResultCache
+
+    db = tmp_path / "benign-cache.db"
+    ResultCache(str(db), enabled=True)
+
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            """
+            INSERT INTO analysis_cache
+                (cache_key, result_json, created_at, hit_count)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                "benign",
+                json.dumps({"summary": "raw logs were inspected"}),
+                time.time(),
+                0,
+            ),
+        )
+
+    reopened = ResultCache(str(db), enabled=True)
+
+    assert reopened.get("benign") == {
+        "summary": "raw logs were inspected"
+    }
