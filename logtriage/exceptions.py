@@ -11,3 +11,7 @@ class InvalidInputError(LogTriageError, ValueError):
 
 class UnsupportedModeError(LogTriageError, ValueError):
     """Raised when a requested analysis mode is not supported by this API."""
+
+
+class ProviderError(LogTriageError):
+    """Raised when an explanation provider fails or returns an invalid result."""
