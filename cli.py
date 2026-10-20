@@ -392,7 +392,9 @@ def triage(
             import asyncio
             result = asyncio.run(analyzer.full_analysis(safe_log_text, strict=True))
         else:
-            result = analyzer.quick_analysis(safe_log_text)
+            result = analyzer.quick_analysis(
+                safe_log_text, redact=not no_redact
+            )
     except LLMUnavailable:
         click.echo("error: AI explanation failed; no report was written", err=True)
         raise click.exceptions.Exit(3) from None

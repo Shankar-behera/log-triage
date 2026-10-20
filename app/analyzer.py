@@ -27,7 +27,7 @@ from app.timeline_engine import timeline_engine
 from app.security_engine import security_engine
 from app.root_cause_engine import root_cause_engine
 from app.cache import result_cache
-from app.redaction import redact_text
+from app.redaction import redact_text, sanitize_output
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +206,9 @@ class LocalLogAnalyzer:
             "root_cause_data": root_cause_data, "error_counts": error_counts, "priority": priority,
         }
 
-    def quick_analysis(self, log_text: str) -> Dict[str, Any]:
+    def quick_analysis(
+        self, log_text: str, *, redact: bool = True
+    ) -> Dict[str, Any]:
         start = time.time()
         rb = self.rule_based_analysis(log_text)
         lines = log_text.splitlines()
@@ -225,7 +227,7 @@ class LocalLogAnalyzer:
                 f"Top-ranked incident candidate: "
                 f"[{top['service']}] {top['message']}"
             )
-        return {
+        return sanitize_output({
             "success": True, "analysis_type": "quick",
             "summary": "\n".join(summary_lines),
             "detailed_analysis": timeline_engine.get_incident_chain(rb["timeline"], max_events=40),
@@ -239,7 +241,7 @@ class LocalLogAnalyzer:
             "chunks_processed": 0, "chunks_total": 0,
             "processing_time_seconds": round(time.time() - start, 3),
             "model_used": None, "from_cache": False,
-        }
+        }, redact=redact, pii=True)
 
     async def full_analysis(self, log_text: str, strict: bool = False) -> Dict[str, Any]:
         start = time.time()
@@ -255,7 +257,7 @@ class LocalLogAnalyzer:
                 "Groq unavailable (missing key or unreachable). Rule-based only.\n\n"
                 + result["summary"]
             )
-            return result
+            return sanitize_output(result, pii=True)
 
         cache_key = result_cache.make_key(log_text, "full", self.model, settings.TEMPERATURE)
         cached = result_cache.get(cache_key)
@@ -276,7 +278,7 @@ class LocalLogAnalyzer:
                 "processing_time_seconds": round(time.time() - start, 3),
                 "model_used": self.model, "from_cache": True,
             }
-            return result
+            return sanitize_output(result, pii=True)
 
         chunks = log_splitter.split_logs(log_text, strategy="smart")
         chunks_total = len(chunks)
@@ -325,6 +327,9 @@ class LocalLogAnalyzer:
             "processing_time_seconds": round(time.time() - start, 3),
             "model_used": self.model, "from_cache": False,
         }
+        # Sanitize every nested output field before caching or returning it.
+        result = sanitize_output(result, pii=True)
+
         # Cache only AI-generated strings and counts, never parsed events/raw logs.
         result_cache.set(cache_key, {
             "summary": result["summary"],

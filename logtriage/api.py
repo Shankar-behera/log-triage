@@ -1,4 +1,4 @@
-﻿"""Stable in-process API for deterministic Log Triage analysis."""
+"""Stable in-process API for deterministic Log Triage analysis."""
 
 from __future__ import annotations
 
@@ -64,7 +64,9 @@ class Analyzer:
         safe_content = redact_text(content) if options.redact else content
         # The engine's current parser defaults provenance to <stdin>. Apply the
         # public source label and recalculate IDs after the engine has completed.
-        raw_result = self._engine.quick_analysis(safe_content)
+        raw_result = self._engine.quick_analysis(
+            safe_content, redact=options.redact
+        )
         events = raw_result.get("events", [])
         if isinstance(events, list):
             for event in events:
