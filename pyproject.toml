@@ -42,6 +42,7 @@ dev = [
     "python-multipart>=0.0.18",
     "httpx>=0.25",
     "httpx2",
+    "jsonschema>=4.20,<5",
 ]
 service = [
     "fastapi>=0.110,<1.0",
