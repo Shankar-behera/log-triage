@@ -78,3 +78,66 @@ def test_log_delimiter_lookalikes_are_neutralized():
     assert "</log_data>" not in safe
     assert "<analysis>" not in safe
     assert "ignore rules" in safe
+
+
+def test_direct_provider_call_redacts_secrets_and_pii_before_dispatch(monkeypatch):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "fake-key")
+
+    seen = []
+
+    def fake_post(_url, **kwargs):
+        seen.append(kwargs["json"])
+        return FakeResponse(
+            200,
+            {"choices": [{"message": {"content": "Analysis complete."}}]},
+        )
+
+    monkeypatch.setattr("app.analyzer.requests.post", fake_post)
+
+    prompt = (
+        "Analyze password=synthetic-secret "
+        "contact alice@example.com from 192.0.2.10"
+    )
+
+    ok, content = LocalLogAnalyzer()._call_groq_blocking(prompt)
+
+    assert ok is True
+    assert content == "Analysis complete."
+    assert len(seen) == 1
+
+    sent = seen[0]["messages"][1]["content"]
+    assert "synthetic-secret" not in sent
+    assert "alice@example.com" not in sent
+    assert "192.0.2.10" not in sent
+    assert "[REDACTED]" in sent
+
+
+def test_legacy_provider_redacts_pii_from_generated_output(monkeypatch):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "fake-key")
+
+    monkeypatch.setattr(
+        "app.analyzer.requests.post",
+        lambda *_args, **_kwargs: FakeResponse(
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                "Contact alice@example.com "
+                                "at 192.0.2.10; password=synthetic-secret"
+                            )
+                        }
+                    }
+                ]
+            },
+        ),
+    )
+
+    ok, content = LocalLogAnalyzer()._call_groq_blocking("Analyze this error")
+
+    assert ok is True
+    assert "alice@example.com" not in content
+    assert "192.0.2.10" not in content
+    assert "synthetic-secret" not in content
+    assert "[REDACTED]" in content

@@ -95,11 +95,12 @@ class LocalLogAnalyzer:
         if not settings.GROQ_API_KEY:
             return False, "GROQ_API_KEY is not set"
         headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}", "Content-Type": "application/json"}
+        safe_prompt = redact_text(prompt, pii=True)
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": safe_prompt},
             ],
             "temperature": settings.TEMPERATURE,
             "max_tokens": max_tokens or settings.MAX_TOKENS,
@@ -126,7 +127,7 @@ class LocalLogAnalyzer:
                     content = resp.json()["choices"][0]["message"]["content"].strip()
                     if not content:
                         return False, "Groq returned an empty response"
-                    return True, redact_text(content)
+                    return True, redact_text(content, pii=True)
                 except (KeyError, IndexError, TypeError, AttributeError, ValueError):
                     return False, "Groq returned an unexpected response shape"
 
