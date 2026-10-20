@@ -1,4 +1,3 @@
-
 from types import SimpleNamespace
 
 import pytest
@@ -220,3 +219,199 @@ def test_malformed_or_empty_response_is_rejected(configured_settings, body):
 def test_invalid_timeout_is_rejected(timeout):
     with pytest.raises(ValueError, match="timeout"):
         groq.GroqExplanationProvider(timeout=timeout)
+
+
+class SequenceSession:
+    """Return or raise successive outcomes for deterministic retry tests."""
+
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = []
+
+    def post(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def test_retries_429_then_succeeds_and_respects_retry_after(
+    configured_settings, monkeypatch
+):
+    import asyncio
+
+    delays = []
+    monkeypatch.setattr(groq.time, "sleep", delays.append)
+
+    limited = FakeResponse(status_code=429)
+    limited.headers = {"Retry-After": "2"}
+
+    session = SequenceSession([limited, FakeResponse()])
+    provider = groq.GroqExplanationProvider(session=session)
+
+    result = asyncio.run(
+        provider.explain(ExplanationRequest(redacted_content="ERROR"))
+    )
+
+    assert result.provider == "groq"
+    assert len(session.calls) == 2
+    assert delays == [2.0]
+
+
+def test_retry_after_is_capped(configured_settings, monkeypatch):
+    import asyncio
+
+    delays = []
+    monkeypatch.setattr(groq.time, "sleep", delays.append)
+
+    limited = FakeResponse(status_code=429)
+    limited.headers = {"Retry-After": "120"}
+
+    session = SequenceSession([limited, FakeResponse()])
+    provider = groq.GroqExplanationProvider(
+        session=session,
+        max_retry_after_seconds=1,
+    )
+
+    asyncio.run(
+        provider.explain(ExplanationRequest(redacted_content="ERROR"))
+    )
+
+    assert delays == [1.0]
+    assert len(session.calls) == 2
+
+
+def test_retries_server_error_then_succeeds(configured_settings, monkeypatch):
+    import asyncio
+
+    delays = []
+    monkeypatch.setattr(groq.time, "sleep", delays.append)
+
+    session = SequenceSession(
+        [FakeResponse(status_code=503), FakeResponse()]
+    )
+    provider = groq.GroqExplanationProvider(
+        session=session,
+        retry_backoff_seconds=0.1,
+    )
+
+    result = asyncio.run(
+        provider.explain(ExplanationRequest(redacted_content="ERROR"))
+    )
+
+    assert result.text == "Database connection timeout detected."
+    assert len(session.calls) == 2
+    assert delays == [0.1]
+
+
+def test_retries_timeout_then_succeeds(configured_settings, monkeypatch):
+    import asyncio
+
+    delays = []
+    monkeypatch.setattr(groq.time, "sleep", delays.append)
+
+    session = SequenceSession(
+        [requests.exceptions.Timeout(), FakeResponse()]
+    )
+    provider = groq.GroqExplanationProvider(
+        session=session,
+        retry_backoff_seconds=0.1,
+    )
+
+    result = asyncio.run(
+        provider.explain(ExplanationRequest(redacted_content="ERROR"))
+    )
+
+    assert result.provider == "groq"
+    assert len(session.calls) == 2
+    assert delays == [0.1]
+
+
+def test_retries_connection_error_then_succeeds(
+    configured_settings, monkeypatch
+):
+    import asyncio
+
+    delays = []
+    monkeypatch.setattr(groq.time, "sleep", delays.append)
+
+    session = SequenceSession(
+        [requests.exceptions.ConnectionError(), FakeResponse()]
+    )
+    provider = groq.GroqExplanationProvider(
+        session=session,
+        retry_backoff_seconds=0.1,
+    )
+
+    asyncio.run(
+        provider.explain(ExplanationRequest(redacted_content="ERROR"))
+    )
+
+    assert len(session.calls) == 2
+    assert delays == [0.1]
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 413, 422])
+def test_permanent_http_errors_are_not_retried(
+    configured_settings, monkeypatch, status
+):
+    import asyncio
+
+    delays = []
+    monkeypatch.setattr(groq.time, "sleep", delays.append)
+
+    session = SequenceSession([FakeResponse(status_code=status)])
+    provider = groq.GroqExplanationProvider(session=session)
+
+    with pytest.raises(ProviderError):
+        asyncio.run(
+            provider.explain(ExplanationRequest(redacted_content="ERROR"))
+        )
+
+    assert len(session.calls) == 1
+    assert delays == []
+
+
+def test_retry_exhaustion_is_bounded(configured_settings, monkeypatch):
+    import asyncio
+
+    delays = []
+    monkeypatch.setattr(groq.time, "sleep", delays.append)
+
+    session = SequenceSession(
+        [
+            FakeResponse(status_code=503),
+            FakeResponse(status_code=503),
+            FakeResponse(status_code=503),
+        ]
+    )
+    provider = groq.GroqExplanationProvider(
+        session=session,
+        max_retries=2,
+        retry_backoff_seconds=0.1,
+    )
+
+    with pytest.raises(ProviderError, match="HTTP 503"):
+        asyncio.run(
+            provider.explain(ExplanationRequest(redacted_content="ERROR"))
+        )
+
+    assert len(session.calls) == 3
+    assert delays == [0.1, 0.2]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"max_retries": -1},
+        {"max_retries": True},
+        {"max_retries": 1.5},
+        {"retry_backoff_seconds": -1},
+        {"retry_backoff_seconds": float("inf")},
+        {"max_retry_after_seconds": -1},
+    ],
+)
+def test_invalid_retry_configuration_is_rejected(kwargs):
+    with pytest.raises(ValueError):
+        groq.GroqExplanationProvider(**kwargs)

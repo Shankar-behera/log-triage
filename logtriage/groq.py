@@ -2,6 +2,8 @@
 """Groq adapter for the public Log Triage explanation-provider contract."""
 
 import asyncio
+import math
+import time
 from typing import Any, Dict, Optional
 
 import requests
@@ -27,11 +29,7 @@ Keep the explanation concise and actionable.
 
 
 class GroqExplanationProvider:
-    """Implement ExplanationProvider using Groq's OpenAI-compatible API.
-
-    The caller should normally use Analyzer.explain(), which redacts and
-    sanitizes the request and response at the public API boundary as well.
-    """
+    """Implement ExplanationProvider using Groq's OpenAI-compatible API."""
 
     def __init__(
         self,
@@ -39,6 +37,9 @@ class GroqExplanationProvider:
         model: Optional[str] = None,
         timeout: Optional[float] = None,
         session: Any = None,
+        max_retries: int = 2,
+        retry_backoff_seconds: float = 0.25,
+        max_retry_after_seconds: float = 30.0,
     ) -> None:
         self.model = model
         self.timeout = (
@@ -46,12 +47,40 @@ class GroqExplanationProvider:
         )
         self._session = session if session is not None else requests
 
-        if isinstance(self.timeout, bool) or not isinstance(
-            self.timeout, (int, float)
+        if (
+            isinstance(self.timeout, bool)
+            or not isinstance(self.timeout, (int, float))
+            or not math.isfinite(self.timeout)
+            or self.timeout <= 0
         ):
             raise ValueError("timeout must be a positive number")
-        if self.timeout <= 0:
-            raise ValueError("timeout must be a positive number")
+
+        if (
+            isinstance(max_retries, bool)
+            or not isinstance(max_retries, int)
+            or max_retries < 0
+        ):
+            raise ValueError("max_retries must be a non-negative integer")
+
+        if (
+            isinstance(retry_backoff_seconds, bool)
+            or not isinstance(retry_backoff_seconds, (int, float))
+            or not math.isfinite(retry_backoff_seconds)
+            or retry_backoff_seconds < 0
+        ):
+            raise ValueError("retry_backoff_seconds must be non-negative")
+
+        if (
+            isinstance(max_retry_after_seconds, bool)
+            or not isinstance(max_retry_after_seconds, (int, float))
+            or not math.isfinite(max_retry_after_seconds)
+            or max_retry_after_seconds < 0
+        ):
+            raise ValueError("max_retry_after_seconds must be non-negative")
+
+        self.max_retries = max_retries
+        self.retry_backoff_seconds = float(retry_backoff_seconds)
+        self.max_retry_after_seconds = float(max_retry_after_seconds)
 
     async def explain(
         self,
@@ -62,6 +91,82 @@ class GroqExplanationProvider:
             raise TypeError("request must be an ExplanationRequest")
 
         return await asyncio.to_thread(self._explain_blocking, request)
+
+    def _backoff_delay(self, retry_index: int) -> float:
+        """Return capped exponential backoff for a retry."""
+        delay = self.retry_backoff_seconds * (2**retry_index)
+        return min(delay, self.max_retry_after_seconds)
+
+    def _retry_delay(self, response: Any, retry_index: int) -> float:
+        """Use numeric Retry-After when valid; otherwise use backoff."""
+        headers = getattr(response, "headers", None)
+        retry_after = headers.get("Retry-After") if headers else None
+
+        if isinstance(retry_after, str):
+            try:
+                delay = float(retry_after.strip())
+            except ValueError:
+                delay = -1.0
+
+            if math.isfinite(delay) and delay >= 0:
+                return min(delay, self.max_retry_after_seconds)
+
+        return self._backoff_delay(retry_index)
+
+    def _post_with_retries(
+        self,
+        url: str,
+        api_key: str,
+        payload: Dict[str, Any],
+    ) -> Any:
+        """Retry only transient transport failures and retryable HTTP statuses."""
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self._session.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.timeout,
+                )
+            except requests.exceptions.Timeout:
+                if attempt >= self.max_retries:
+                    raise ProviderError("Groq request timed out") from None
+
+                delay = self._backoff_delay(attempt)
+                if delay:
+                    time.sleep(delay)
+                continue
+            except requests.exceptions.ConnectionError:
+                if attempt >= self.max_retries:
+                    raise ProviderError(
+                        "Could not connect to the Groq endpoint"
+                    ) from None
+
+                delay = self._backoff_delay(attempt)
+                if delay:
+                    time.sleep(delay)
+                continue
+            except requests.exceptions.RequestException:
+                # Unknown request errors are not assumed to be transient.
+                raise ProviderError("Groq request failed") from None
+
+            status = response.status_code
+            retryable_status = status == 429 or 500 <= status <= 599
+
+            if not retryable_status or attempt >= self.max_retries:
+                return response
+
+            delay = self._retry_delay(response, attempt)
+            if delay:
+                time.sleep(delay)
+
+        # The loop always returns a response or raises ProviderError.
+        raise ProviderError("Groq request failed")
 
     def _explain_blocking(
         self,
@@ -101,23 +206,7 @@ class GroqExplanationProvider:
             "temperature": 0.1,
         }
 
-        try:
-            response = self._session.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=self.timeout,
-            )
-        except requests.exceptions.Timeout:
-            raise ProviderError("Groq request timed out") from None
-        except requests.exceptions.ConnectionError:
-            raise ProviderError("Could not connect to the Groq endpoint") from None
-        except requests.exceptions.RequestException:
-            raise ProviderError("Groq request failed") from None
-
+        response = self._post_with_retries(url, api_key, payload)
         status = response.status_code
 
         if status in (401, 403):
