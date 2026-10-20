@@ -18,6 +18,7 @@ from .providers import (
     ExplanationResponse,
 )
 from .results import AnalysisResult
+from .groq import GroqExplanationProvider
 
 __all__ = [
     "Analyzer",
@@ -30,6 +31,7 @@ __all__ = [
     "InvalidInputError",
     "ProviderError",
     "UnsupportedModeError",
+    "GroqExplanationProvider",
 ]
 
 __version__ = "0.1.0"
