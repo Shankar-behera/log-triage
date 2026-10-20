@@ -3,7 +3,7 @@
 import json
 import sys
 import os
-import stat
+# import stat
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -14,7 +14,7 @@ from app.analyzer import get_analyzer
 from app.config import settings
 from app.jsonl_input import JSONLInputError, normalize_jsonl
 from app.report_export import build_report
-from app.redaction import redact_log_input, redact_text, sanitize_output
+from app.redaction import redact_log_input,sanitize_output
 from app.provenance import assign_event_ids
 from app.analyzer import LLMUnavailable
 
