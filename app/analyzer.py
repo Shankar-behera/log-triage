@@ -293,10 +293,10 @@ class LocalLogAnalyzer:
             if ok:
                 successful.append(f"--- Chunk {i}/{chunks_total} ---\n{content}")
             else:
-                chunk_failures.append(f"chunk {i}: {content}")
+                chunk_failures.append(f"chunk {i}")
 
         if not successful:
-            raise LLMUnavailable("every LLM chunk failed: " + "; ".join(chunk_failures))
+            raise LLMUnavailable(f"every LLM chunk failed ({len(chunk_failures)} chunk(s))")
 
         combined = "\n\n".join(successful)
         if chunk_failures:
