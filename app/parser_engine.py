@@ -86,6 +86,15 @@ class LogParserEngine:
             rf"^\s*(?P<severity>{_SEVERITY_ALT}):\s*(?P<message>.*)$",
             re.IGNORECASE,
         ),
+        # Generic timestamp + severity + message, e.g.
+        # 2026-10-22 10:00:02 ERROR Database connection failed.
+        # Keep this after the more specific patterns above.
+        re.compile(
+            rf"^\s*(?P<timestamp>{_TIMESTAMP})\s+"
+            rf"(?P<severity>{_SEVERITY_ALT})\b\s+"
+            rf"(?P<message>.*)$",
+            re.IGNORECASE,
+        ),
     ]
 
     SEVERITY_WEIGHTS = {

@@ -1,85 +1,204 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>log-triage demo</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080a12">
+  <meta name="description" content="Local-first log analysis demo for log-triage.">
+  <title>Log Triage — Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/script.js" defer></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1><i class="fas fa-laptop-code"></i> log-triage</h1>
-            <p class="subtitle">Web demo — the CLI is the primary product</p>
-            <div class="model-info">
-                <span class="chip" id="modelStatus"><i class="fas fa-microchip"></i> Checking...</span>
-                <span class="chip"><i class="fas fa-terminal"></i> CLI: <code>pip install log-triage</code></span>
-            </div>
-        </header>
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-violet"></span>
+    <span class="orb orb-teal"></span>
+  </div>
 
-        <div class="upload-section">
-            <div class="input-methods">
-                <div class="method-card">
-                    <h3><i class="fas fa-edit"></i> Paste Log Text</h3>
-                    <textarea id="logText" placeholder="Paste your logs here..."></textarea>
-                    <button class="btn" style="margin-top:10px;width:100%;" onclick="analyzeText()">
-                        <i class="fas fa-play"></i> Analyze
-                    </button>
-                </div>
-                <div class="method-card">
-                    <h3><i class="fas fa-file-upload"></i> Upload File</h3>
-                    <div class="upload-area" id="dropArea">
-                        <i class="fas fa-cloud-upload-alt fa-2x"></i>
-                        <p>Drag & drop or click</p>
-                        <p style="font-size:12px;color:#666;">Supports: .txt, .log, .json</p>
-                        <input type="file" id="fileInput" accept=".txt,.log,.json" hidden>
-                        <button class="btn secondary" onclick="document.getElementById('fileInput').click()">
-                            <i class="fas fa-folder-open"></i> Browse
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin-top:20px;flex-wrap:wrap;gap:15px;">
-                <label><input type="checkbox" id="quickMode"> Quick mode (no LLM)</label>
-                <button class="btn secondary" onclick="loadSample()"><i class="fas fa-vial"></i> Sample</button>
-            </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Log Triage home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="brand-name">log<span class="brand-accent">-triage</span></span>
+        <span class="brand-tag">WORKBENCH</span>
+      </a>
+      <div class="topbar-right">
+        <span class="status-pill" id="modelStatus" data-state="checking">
+          <span class="status-dot"></span><span id="modelStatusText">Checking service</span>
+        </span>
+        <a class="cli-link" href="https://github.com/Shankar-behera/log-triage" target="_blank" rel="noreferrer">
+          CLI project <span class="arrow" aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow"><span class="eyebrow-line"></span> LOG INTELLIGENCE / LOCAL-FIRST</div>
+        <h1>Make sense of<br><span class="hero-gradient">the noise.</span></h1>
+        <p class="hero-copy">Inspect application logs, surface incident signals, and get a readable summary. Quick mode uses deterministic rule-based analysis; full mode may use the configured LLM provider.</p>
+        <div class="hero-meta">
+          <span class="meta-chip"><span class="mini-dot teal"></span> Rule-based quick scan</span>
+          <span class="meta-chip"><span class="mini-dot violet"></span> Structured event parsing</span>
+          <span class="meta-chip"><span class="mini-dot amber"></span> Security pattern signals</span>
+        </div>
+      </section>
+
+      <section class="workspace" aria-labelledby="input-heading">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">01 / INPUT</div>
+            <h2 id="input-heading">Bring your logs</h2>
+          </div>
+          <button class="ghost-button" id="sampleButton" type="button">
+            <span aria-hidden="true">✦</span> Load sample
+          </button>
         </div>
 
-        <div class="analysis-section hidden" id="analysisSection">
-            <h2><i class="fas fa-chart-bar"></i> Results</h2>
-            <div class="stats-bar" style="margin-top:20px;">
-                <div class="stat"><span class="stat-label">Status</span>
-                    <span class="stat-value" id="statusText">-</span></div>
-                <div class="stat"><span class="stat-label">Lines</span>
-                    <span class="stat-value" id="lineCount">0</span></div>
-                <div class="stat"><span class="stat-label">Errors</span>
-                    <span class="stat-value error" id="errorCount">0</span></div>
-                <div class="stat"><span class="stat-label">Time</span>
-                    <span class="stat-value" id="timeText">-</span></div>
+        <div class="input-grid">
+          <div class="panel editor-panel">
+            <div class="panel-head">
+              <div class="panel-title"><span class="panel-icon">⌘</span> Paste log text</div>
+              <span class="subtle-label">TEXT INPUT</span>
             </div>
-            <div class="results-container">
-                <div class="tab-header">
-                    <button class="tab-btn active" onclick="switchTab('summary')">Summary</button>
-                    <button class="tab-btn" onclick="switchTab('details')">Details</button>
-                    <button class="tab-btn" onclick="switchTab('errors')">Errors</button>
-                </div>
-                <div class="tab-content">
-                    <div id="summaryTab" class="tab-pane active"><pre id="summaryContent">-</pre></div>
-                    <div id="detailsTab" class="tab-pane"><pre id="detailsContent">-</pre></div>
-                    <div id="errorsTab" class="tab-pane"><pre id="errorsContent">-</pre></div>
-                </div>
+            <div class="editor-wrap">
+              <textarea id="logText" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="2026-10-22 10:00:02 ERROR Database connection failed&#10;2026-10-22 10:00:03 INFO Retry scheduled..."></textarea>
             </div>
+            <label class="sr-only" for="logText">Log text</label>
+            <div class="editor-foot">
+              <span id="inputStats">0 lines · 0 characters</span>
+              <button class="text-button" id="clearButton" type="button">Clear</button>
+            </div>
+          </div>
+
+          <div class="panel upload-panel">
+            <div class="panel-head">
+              <div class="panel-title"><span class="panel-icon upload-icon">↑</span> Upload a file</div>
+              <span class="subtle-label">FILE INPUT</span>
+            </div>
+            <div class="dropzone" id="dropArea" tabindex="0" role="button" aria-label="Choose a log file or drop one here">
+              <div class="upload-ring" aria-hidden="true">
+                <div class="upload-symbol">↑</div>
+              </div>
+              <strong>Drop a log file here</strong>
+              <span class="drop-sub">or choose a file from your device</span>
+              <span class="file-types">.txt <i></i> .log <i></i> .json</span>
+              <input type="file" id="fileInput" accept=".txt,.log,.json,text/plain,application/json" hidden>
+              <button class="button button-secondary" id="browseButton" type="button">Browse files</button>
+              <p id="selectedFile" class="selected-file" aria-live="polite">No file selected</p>
+            </div>
+          </div>
         </div>
 
-        <footer>
-            <p>Rule-based analysis runs offline • Full analysis uses Groq API</p>
-            <p class="health-status">
-                <i class="fas fa-circle health-icon" id="healthIcon"></i>
-                <span id="healthStatus">Checking...</span>
-            </p>
-        </footer>
-    </div>
-    <script src="/static/script.js"></script>
+        <div class="runbar">
+          <label class="mode-toggle" for="quickMode">
+            <input type="checkbox" id="quickMode" checked>
+            <span class="toggle-track" aria-hidden="true"></span>
+            <span class="mode-copy"><strong>Quick scan</strong><small>Rule-based · no LLM call</small></span>
+          </label>
+          <button class="button button-primary" id="analyzeButton" type="button">
+            <span class="button-play" aria-hidden="true">▶</span><span id="analyzeButtonText">Analyze logs</span>
+          </button>
+        </div>
+        <p class="privacy-note"><span aria-hidden="true">◈</span> Use logs you are authorized to inspect. Avoid pasting credentials or other secrets.</p>
+      </section>
+
+      <section class="results-section hidden" id="analysisSection" aria-labelledby="results-heading" aria-live="polite">
+        <div class="section-heading results-heading">
+          <div>
+            <div class="eyebrow">02 / ANALYSIS</div>
+            <h2 id="results-heading">Analysis results</h2>
+          </div>
+          <span id="resultBadge" class="result-badge" data-state="idle">WAITING</span>
+        </div>
+
+        <div class="metrics-grid">
+          <article class="metric-card">
+            <div class="metric-top">
+              <span class="metric-label">Run status</span>
+              <span class="metric-icon" id="statusIcon" aria-hidden="true">◌</span>
+            </div>
+            <strong class="metric-value metric-status" id="statusText">Waiting</strong>
+            <span class="metric-foot" id="modeText">No analysis yet</span>
+          </article>
+          <article class="metric-card">
+            <div class="metric-top">
+              <span class="metric-label">Input lines</span>
+              <span class="metric-icon" aria-hidden="true">≡</span>
+            </div>
+            <strong class="metric-value" id="lineCount">0</strong>
+            <span class="metric-foot">Lines submitted for analysis</span>
+          </article>
+          <article class="metric-card metric-highlight">
+            <div class="metric-top">
+              <span class="metric-label">Incident signals</span>
+              <span class="metric-icon" aria-hidden="true">⚡</span>
+            </div>
+            <strong class="metric-value metric-violet" id="errorCount">0</strong>
+            <span class="metric-foot">Not a sum of overlapping keyword matches</span>
+          </article>
+          <article class="metric-card">
+            <div class="metric-top">
+              <span class="metric-label">Processing time</span>
+              <span class="metric-icon" aria-hidden="true">⏱</span>
+            </div>
+            <strong class="metric-value" id="timeText">—</strong>
+            <span class="metric-foot">Reported by the analysis service</span>
+          </article>
+        </div>
+
+        <div class="results-panel panel">
+          <div class="results-topline">
+            <div class="panel-title">Run report</div>
+            <div class="result-actions">
+              <button class="text-button" id="copySummaryButton" type="button">Copy summary</button>
+              <button class="text-button" id="downloadButton" type="button">Export JSON ↓</button>
+            </div>
+          </div>
+          <div class="tab-header" role="tablist" aria-label="Analysis result sections">
+            <button class="tab-btn active" type="button" role="tab" aria-selected="true" aria-controls="summaryTab" data-tab="summaryTab">Summary</button>
+            <button class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="detailsTab" data-tab="detailsTab">Incident details</button>
+            <button class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="errorsTab" data-tab="errorsTab">Pattern counts</button>
+          </div>
+          <div class="tab-content">
+            <section id="summaryTab" class="tab-pane active" role="tabpanel">
+              <div class="summary-callout">
+                <span class="summary-mark" aria-hidden="true">✳</span>
+                <div class="summary-body">
+                  <span class="subtle-label">EXECUTIVE SUMMARY</span>
+                  <pre id="summaryContent">Your analysis summary will appear here.</pre>
+                </div>
+              </div>
+              <div class="priority-row">
+                <span class="subtle-label">DETECTED PRIORITY</span>
+                <span id="priorityValue" class="priority-pill" data-priority="unknown">UNKNOWN</span>
+              </div>
+            </section>
+            <section id="detailsTab" class="tab-pane" role="tabpanel" hidden>
+              <pre id="detailsContent">No incident details yet.</pre>
+            </section>
+            <section id="errorsTab" class="tab-pane" role="tabpanel" hidden>
+              <p class="section-note">These are keyword-pattern matches returned by the analyzer. Categories may overlap on the same line; they are not unique-event counts.</p>
+              <div id="patternCounts" class="pattern-grid"><p class="empty-state">Pattern counts will appear after analysis.</p></div>
+              <div class="security-block">
+                <div class="subtle-label">SECURITY SIGNALS</div>
+                <pre id="securityContent">No security report yet.</pre>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-brand"><span class="brand-mark small" aria-hidden="true"><span></span><span></span><span></span></span> log-triage <span class="footer-muted">· web demo</span></div>
+      <div class="footer-status"><span class="status-dot" id="healthDot"></span><span id="healthStatus">Checking service status…</span></div>
+      <p>Quick mode is rule-based. Full mode depends on the configured provider and its availability.</p>
+    </footer>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
 </body>
 </html>
