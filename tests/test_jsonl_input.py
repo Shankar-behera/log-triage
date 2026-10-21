@@ -115,3 +115,20 @@ def test_cli_jsonl_directory_scan(tmp_path):
     )
 
     assert result.exit_code == 1, result.output
+
+
+@pytest.mark.parametrize("severity", [
+    "BAD\x1b[31mPRIVATE_SENTINEL\x1b[0m",
+    "X" * 5000,
+])
+def test_unsupported_severity_error_does_not_echo_untrusted_value(severity):
+    content = json.dumps({"severity": severity, "message": "test"})
+
+    with pytest.raises(JSONLInputError) as exc_info:
+        normalize_jsonl(content, source="sample.jsonl")
+
+    message = str(exc_info.value)
+    assert "sample.jsonl: line 1" in message
+    assert "\x1b" not in message
+    assert "PRIVATE_SENTINEL" not in message
+    assert len(message) < 300

@@ -109,8 +109,7 @@ def normalize_jsonl(content: str, source: str = "<stdin>") -> str:
 
         if severity not in SEVERITIES:
             raise JSONLInputError(
-                f"{source}: line {line_number}: "
-                f"unsupported severity '{severity}'"
+                f"{source}: line {line_number}: unsupported severity"
             )
 
         severity = SEVERITY_ALIASES.get(severity, severity)
