@@ -126,11 +126,11 @@ def _read_input(
 
     except JSONLInputError:
         raise
-    except PermissionError as exc:
-        click.echo(f"error: cannot read '{path}': {exc}", err=True)
+    except PermissionError:
+        click.echo("error: cannot read input file", err=True)
         raise click.exceptions.Exit(2) from None
-    except OSError as exc:
-        click.echo(f"error: cannot read '{path}': {exc}", err=True)
+    except OSError:
+        click.echo("error: cannot read input file", err=True)
         raise click.exceptions.Exit(2) from None
 
 
@@ -443,8 +443,8 @@ def triage(
             finally:
                 try: os.unlink(temp_name)
                 except FileNotFoundError: pass
-        except (OSError, ValueError) as exc:
-            click.echo(f"error: could not write report: {exc}", err=True)
+        except (OSError, ValueError):
+            click.echo("error: could not write report", err=True)
             raise click.exceptions.Exit(2) from None
 
     if not quiet:

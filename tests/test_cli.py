@@ -301,7 +301,7 @@ def test_unreadable_file_returns_cli_error(runner, tmp_path, monkeypatch):
     r = runner.invoke(app, [str(log_file)])
     assert r.exit_code == 2
     assert "cannot read" in r.output
-    assert "access denied" in r.output
+    assert "access denied" not in r.output
 
 def test_markdown_report_file_is_created(runner, error_log, tmp_path):
     report_path = tmp_path / "reports" / "incident.md"
@@ -506,3 +506,55 @@ def test_cli_optional_pii_redaction_covers_exported_report_source(
     assert result.exit_code == 0, result.output
     assert report_path.is_file()
     assert "alice@example.com" not in report_path.read_text(encoding="utf-8")
+
+
+def test_unreadable_file_does_not_expose_os_error_details(
+    runner, tmp_path, monkeypatch
+):
+    """Raw filesystem exception details must not reach CLI output."""
+    from pathlib import Path
+
+    log_file = tmp_path / "unreadable.log"
+    log_file.write_text("INFO ready\n", encoding="utf-8")
+    original_read_text = Path.read_text
+    secret_detail = "PRIVATE_FILESYSTEM_DETAIL_8f3c"
+
+    def blocked_read_text(self, *args, **kwargs):
+        if self == log_file:
+            raise PermissionError(secret_detail)
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", blocked_read_text)
+
+    result = runner.invoke(app, [str(log_file)])
+
+    assert result.exit_code == 2
+    assert "cannot read" in result.output
+    assert secret_detail not in result.output
+
+
+def test_report_write_error_does_not_expose_os_error_details(
+    runner, tmp_path, monkeypatch
+):
+    """Filesystem exception details must not leak on report-write failure."""
+    import cli as cli_module
+
+    log_file = tmp_path / "input.log"
+    log_file.write_text("2024-01-15 10:00:00 ERROR [App] failed\n", encoding="utf-8")
+    report_path = tmp_path / "report.json"
+    secret_detail = "PRIVATE_REPORT_FAILURE_DETAIL_7c21"
+
+    def blocked_fsync(_fd):
+        raise OSError(secret_detail)
+
+    monkeypatch.setattr(cli_module.os, "fsync", blocked_fsync)
+
+    result = runner.invoke(
+        app,
+        [str(log_file), "--report", str(report_path)],
+    )
+
+    assert result.exit_code == 2
+    assert "could not write report" in result.output
+    assert secret_detail not in result.output
+    assert not report_path.exists()
