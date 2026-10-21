@@ -87,3 +87,24 @@ def test_analyzer_explain_sanitizes_provider_failure(monkeypatch):
         )
 
     assert "synthetic-private-error" not in str(exc.value)
+
+
+def test_smoke_groq_provider_hides_provider_error_details(monkeypatch, capsys):
+    import scripts.smoke_groq_provider as smoke
+
+    secret_detail = "PRIVATE_PROVIDER_FAILURE_83ad"
+    monkeypatch.setattr(smoke.settings, "GROQ_API_KEY", "synthetic-test-key")
+    monkeypatch.setattr(smoke, "GroqExplanationProvider", lambda: object())
+
+    class FailingAnalyzer:
+        async def explain(self, *args, **kwargs):
+            raise ProviderError(secret_detail)
+
+    monkeypatch.setattr(smoke, "Analyzer", FailingAnalyzer)
+
+    exit_code = smoke.main()
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "FAIL: provider request failed" in output
+    assert secret_detail not in output

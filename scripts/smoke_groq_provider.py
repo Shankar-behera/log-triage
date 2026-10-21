@@ -32,8 +32,8 @@ def main() -> int:
                 provider=provider,
             )
         )
-    except ProviderError as exc:
-        print(f"FAIL: provider request failed: {exc}")
+    except ProviderError:
+        print("FAIL: provider request failed.")
         return 1
     except Exception as exc:
         # Avoid printing exception details that could contain sensitive data.
