@@ -246,3 +246,24 @@ def test_service_runner_reports_missing_optional_dependencies(monkeypatch, capsy
         main()
 
     assert "pip install 'log-triage[service]'" in str(exc.value)
+
+
+def test_unexpected_internal_error_does_not_leak_exception_details():
+    secret_detail = "PRIVATE_INTERNAL_FAILURE_4e92"
+
+    class FailingAnalyzer:
+        def analyze(self, content, *, options=None, analysis_mode="rules"):
+            raise RuntimeError(secret_detail)
+
+    test_client = TestClient(
+        create_app(analyzer=FailingAnalyzer()),
+        raise_server_exceptions=False,
+    )
+
+    response = test_client.post("/v1/analyze", json=request_payload())
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert "could not be completed safely" in response.text
+    assert secret_detail not in response.text
+    assert "traceback" not in response.text.lower()
