@@ -537,6 +537,7 @@ textarea:focus { outline: none; }
   font-size: 10.5px;
 }
 .privacy-note span { color: var(--amber); }
+.privacy-note strong { color: var(--amber); }
 
 /* ---------- Results ---------- */
 .hidden { display: none !important; }

@@ -88,7 +88,7 @@
   async function requestAnalysis({ text, file }) {
     if (activeRequest) return;
     const quick = $("quickMode").checked;
-    if (!file && !text.trim()) {
+    if (!file && (!text || !text.trim())) {
       showToast("Paste log text or choose a file first.");
       $("logText").focus();
       return;

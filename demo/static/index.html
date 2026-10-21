@@ -39,7 +39,7 @@
       <section class="hero">
         <div class="eyebrow"><span class="eyebrow-line"></span> LOG INTELLIGENCE / LOCAL-FIRST</div>
         <h1>Make sense of<br><span class="hero-gradient">the noise.</span></h1>
-        <p class="hero-copy">Inspect application logs, surface incident signals, and get a readable summary. Quick mode uses deterministic rule-based analysis; full mode may use the configured LLM provider.</p>
+        <p class="hero-copy">Upload log files or paste text below. Quick Scan uses rule-based analysis without an LLM call. Full analysis may send logs to the configured LLM provider. Best-effort redaction is applied, but sensitive data may remain. Only analyze data you are authorized to share.</p>
         <div class="hero-meta">
           <span class="meta-chip"><span class="mini-dot teal"></span> Rule-based quick scan</span>
           <span class="meta-chip"><span class="mini-dot violet"></span> Structured event parsing</span>
@@ -59,6 +59,7 @@
         </div>
 
         <div class="input-grid">
+          <!-- Paste Text Panel -->
           <div class="panel editor-panel">
             <div class="panel-head">
               <div class="panel-title"><span class="panel-icon">⌘</span> Paste log text</div>
@@ -74,6 +75,7 @@
             </div>
           </div>
 
+          <!-- Upload File Panel -->
           <div class="panel upload-panel">
             <div class="panel-head">
               <div class="panel-title"><span class="panel-icon upload-icon">↑</span> Upload a file</div>
@@ -97,13 +99,16 @@
           <label class="mode-toggle" for="quickMode">
             <input type="checkbox" id="quickMode" checked>
             <span class="toggle-track" aria-hidden="true"></span>
-            <span class="mode-copy"><strong>Quick scan</strong><small>Rule-based · no LLM call</small></span>
+            <span class="mode-copy"><strong>Quick scan</strong><small>Rule-based - no LLM call</small></span>
           </label>
           <button class="button button-primary" id="analyzeButton" type="button">
             <span class="button-play" aria-hidden="true">▶</span><span id="analyzeButtonText">Analyze logs</span>
           </button>
         </div>
-        <p class="privacy-note"><span aria-hidden="true">◈</span> Use logs you are authorized to inspect. Avoid pasting credentials or other secrets.</p>
+        <p class="privacy-note">
+          <span aria-hidden="true">◈</span>
+          <strong>Privacy Warning:</strong> Full analysis may send logs to the configured LLM provider. Best-effort redaction is applied, but sensitive data may remain. Use only logs you are authorized to share.
+        </p>
       </section>
 
       <section class="results-section hidden" id="analysisSection" aria-labelledby="results-heading" aria-live="polite">
